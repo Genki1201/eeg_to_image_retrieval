@@ -1,5 +1,5 @@
-まず、main_mage.py内のmk_labelをTrueにすることで、eeg_to_image.shを実行すると\\
-bash eeg_to_image.sh\\ 
+まず、main_mage.py内のmk_labelをTrueにすることで、eeg_to_image.shを実行すると//
+bash eeg_to_image.sh//
 画像をMoCo v3またはCLIPによって画像特徴量にしてそれをpklファイルとしてeeg_encoder/label_dicに保存する。
 
 その後、eeg_encoderのtrain_big_dataset.pyでCVPR2021のほうは学習が可能
