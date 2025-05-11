@@ -1,0 +1,22 @@
+*.egg-info
+__pycache__
+
+.nfs*
+.idea/
+.DS_store
+
+src/
+vqgan-ckpts/
+final_ckpts/
+
+# these are links
+cache
+pretrained_enc_ckpts
+vqgan_jax_weakaug.ckpt
+imagenet-val
+eeg_encoder/label_dic
+eeg_encoder/trained_eeg_encoder
+eeg_encoder/trained_small_eeg_encoder
+pretrained*/
+output_dir/
+
