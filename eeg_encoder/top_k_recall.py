@@ -17,8 +17,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from eeg_dataset import EEGDataset
-from network import EEG_transformer_encoder, EEG_LSTM_original_model
+from network import EEG_transformer_encoder, EEG_LSTM_original_model, classifier_EEGNet
 from torch.nn.functional import cosine_similarity
+from atms_network.network import ATMS
 
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -26,13 +27,19 @@ np.random.seed(45)
 torch.manual_seed(45)
 
 
-def top_k_recall(k=1, eeg_ckpt_path=None, image_encoder=None):
+def top_k_recall(k=1, eeg_ckpt_path=None, image_encoder=None, network=None):
     if image_encoder=='clip':
         projection_dim = 1024 # moco 256, clip 1024
     elif image_encoder=='moco':
         projection_dim = 256
-    # eeg_encoder = EEG_transformer_encoder(in_channels=96, in_timestep=512, hidden_size=int(projection_dim / 2), projection_dim=projection_dim, num_layers=1, nhead=4, dropout=0).cuda() # num_layers=1
-    eeg_encoder = EEG_transformer_encoder(in_channels=96, in_timestep=512, hidden_size=int(projection_dim), projection_dim=projection_dim, num_layers=1, nhead=4, dropout=0).cuda()
+    # eeg_encoder = ATMS().cuda()
+    channel=96
+    length=512
+    if network == 'EEGNet':
+        eeg_encoder = classifier_EEGNet(channel, length, projection_dim).cuda()
+    elif network == 'ATMS':
+        eeg_encoder = ATMS().cuda()
+    # eeg_encoder = EEG_transformer_encoder(in_channels=96, in_timestep=512, hidden_size=int(projection_dim), projection_dim=projection_dim, num_layers=1, nhead=4, dropout=0).cuda()
     # eeg_encoder = EEG_LSTM_original_model().cuda()
     eegcheckpoint = torch.load(eeg_ckpt_path, map_location=torch.device("cuda"))
     eeg_encoder.load_state_dict(eegcheckpoint['model_state_dict'])
@@ -62,7 +69,11 @@ def top_k_recall(k=1, eeg_ckpt_path=None, image_encoder=None):
     eeg_encoder.eval() 
     for idx in tqdm(idx_lst):
         image_name = dataset_lst[idx]['image']
-        eeg = dataset_lst[idx]['eeg'].cuda()
+        if network == 'EEGNet':
+            eeg = dataset_lst[idx]['eeg'].T.cuda() # seq_len, channel
+        else:
+            eeg = dataset_lst[idx]['eeg'].cuda() # channel, seq_len
+
         with torch.no_grad():
             eeg_embed = eeg_encoder(eeg.unsqueeze(0))
         # コサイン類似度を計算
@@ -82,6 +93,7 @@ def top_k_recall(k=1, eeg_ckpt_path=None, image_encoder=None):
 
 if __name__ == '__main__':
     image_encoder = 'moco'
+    network = 'EEGNet' # ATMS
     # top k recall　EEGを画像特徴量に変換して画像特徴量を検索する
-    eeg_ckpt_path = '/workspace/eeg_to_image_rcg/eeg_encoder/trained_eeg_encoder/EXPERIMENT_2_transformer/best_train_ckpt/eegfeat_0.2698894156217575.pth'
-    top_k_recall(k=50, eeg_ckpt_path=eeg_ckpt_path, image_encoder=image_encoder)
+    eeg_ckpt_path = '/workspace/eeg_to_image_rcg/eeg_encoder/trained_eeg_encoder/EXPERIMENT_7_EEGNet/bestckpt/eegfeat_4.80294527546052.pth' # best
+    top_k_recall(k=50, eeg_ckpt_path=eeg_ckpt_path, image_encoder=image_encoder, network=network)

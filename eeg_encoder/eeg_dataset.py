@@ -11,13 +11,16 @@ import random
 import gc
 
 class EEGDataset(Dataset):
-    def __init__(self, split_dic_path, data_path, label_path, split):
+    def __init__(self, split_dic_path, data_path, label_path, split, network_name='EEGNet'):
         split_dic = torch.load(split_dic_path, map_location='cpu')
-        my_dic = torch.load(data_path, map_location='cpu')
-        self.dataset_lst = my_dic['dataset']
-        del my_dic
+        data_dic = torch.load(data_path, map_location='cpu')
+        self.dataset_lst = data_dic['dataset']
+        self.means = data_dic.get("means", None)
+        self.stddevs = data_dic.get("stddevs", None)
+        del data_dic
         gc.collect()
         self.idx_lst = split_dic['splits'][0][split]
+        self.network_name = network_name
   
         with open(label_path, 'rb') as f:
             self.label_dic = pickle.load(f)
@@ -26,7 +29,17 @@ class EEGDataset(Dataset):
         idx = self.idx_lst[i]
         image_name = self.dataset_lst[idx]['image']
         image_embed = self.label_dic[image_name]
-        eeg = self.dataset_lst[idx]['eeg']
+        eeg = self.dataset_lst[idx]['eeg'].float()
+
+        # 正規化（平均・標準偏差が与えられていれば）
+        if self.means is not None and self.stddevs is not None:
+            # eeg = ((eeg - self.means) / self.stddevs).t()  # (T, C)　EEGNet
+            eeg = ((eeg - self.means) / self.stddevs) # atms
+        else:
+            if self.network_name == 'EEGNet':
+                eeg = eeg.t()
+            else:
+                eeg = eeg
         
         return eeg, image_embed
 

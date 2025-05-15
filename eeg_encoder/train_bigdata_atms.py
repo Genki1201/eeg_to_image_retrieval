@@ -1,3 +1,4 @@
+## ATMSで学習を行う際
 import os
 
 from tqdm import tqdm
@@ -18,75 +19,128 @@ from network import EEG_transformer_encoder, EEG_LSTM_original_model, classifier
 from atms_network.network import ATMS
 
 from torch.optim.lr_scheduler import LambdaLR
+from torch.optim import AdamW
 
 # np.random.seed(45)
 # torch.manual_seed(45)
 
 
-def train(epoch, eeg_encoder, optimizer, train_dataloader):
-    eeg_encoder_loss = []
-    temperature = 0.5 # 0.5 or 0.07
+def train(epoch, eeg_model, optimizer, train_dataloader):
     tq = tqdm(train_dataloader)
-    for batch_idx, (eeg, image_embed) in enumerate(tq, start=1):
-        eeg = eeg.cuda()
-        image_embed = image_embed.cuda()
-
-        optimizer.zero_grad()
-
-        eeg_embed = eeg_encoder(eeg)
-        # logits = (eeg_embed @ image_embed.T) * torch.exp(torch.tensor(temperature))
-        logits = (eeg_embed @ image_embed.T) / temperature # temp 0.07　こちらが一般的
-
-        labels = torch.arange(image_embed.shape[0]).cuda()
+    total_loss = 0
+    correct = 0
+    for batch_idx, (eeg_data, img_features) in enumerate(tq, start=1):
+        eeg_model.train()
+        eeg_data = eeg_data.cuda()
+        img_features = img_features.cuda().float()
         
-        loss_i = F.cross_entropy(logits, labels, reduction='none')
-        loss_t = F.cross_entropy(logits.T, labels, reduction='none')
+        optimizer.zero_grad()
+        
+        batch_size = eeg_data.size(0)  
+        eeg_features = eeg_model(eeg_data).float()
 
-        loss = (loss_i + loss_t) / 2.0
-        loss = loss.mean()
-
+        logit_scale = eeg_model.logit_scale
+        
+        img_loss = eeg_model.loss_func(eeg_features, img_features, logit_scale)
+    
+        loss = img_loss
         loss.backward()
+
         optimizer.step()
-
-        eeg_encoder_loss.append(loss.item())
-
-    avg_loss_encoder = sum(eeg_encoder_loss) / len(eeg_encoder_loss)
+        total_loss += loss.item()
+        
+    avg_loss_encoder = total_loss / (batch_idx+1)
 
     return avg_loss_encoder
 
-def validation(epoch, eeg_encoder, optimizer, val_dataloader):
-    eeg_encoder_loss = []
-    temperature = 0.5
-    for batch_idx, (eeg, image_embed) in enumerate(val_dataloader, start=1):
-        eeg, image_embed = eeg.cuda(), image_embed.cuda()
+# def train(epoch, eeg_encoder, optimizer, train_dataloader):
+#     eeg_encoder_loss = []
+#     temperature = 0.5 # 0.5 or 0.07
+#     tq = tqdm(train_dataloader)
+#     for batch_idx, (eeg, image_embed) in enumerate(tq, start=1):
+#         eeg_encoder.train()
+    #     eeg = eeg.cuda()
+    #     image_embed = image_embed.cuda()
+
+    #     optimizer.zero_grad()
+
+    #     eeg_embed = eeg_encoder(eeg)
+    #     # logits = (eeg_embed @ image_embed.T) * torch.exp(torch.tensor(temperature))
+    #     logits = (eeg_embed @ image_embed.T) / temperature # temp 0.07　こちらが一般的
+
+    #     labels = torch.arange(image_embed.shape[0]).cuda()
+        
+    #     loss_i = F.cross_entropy(logits, labels, reduction='none')
+    #     loss_t = F.cross_entropy(logits.T, labels, reduction='none')
+
+    #     loss = (loss_i + loss_t) / 2.0
+    #     loss = loss.mean()
+
+    #     loss.backward()
+    #     optimizer.step()
+
+    #     eeg_encoder_loss.append(loss.item())
+
+    # avg_loss_encoder = sum(eeg_encoder_loss) / len(eeg_encoder_loss)
+
+    # return avg_loss_encoder
+
+def validation(epoch, eeg_model, optimizer, val_dataloader):
+    tq = tqdm(val_dataloader)
+    total_loss = 0
+    correct = 0
+    for batch_idx, (eeg_data, img_features) in enumerate(tq, start=1):
+        eeg_model.eval()
+        eeg_data = eeg_data.cuda()
+        img_features = img_features.cuda().float()
+        batch_size = eeg_data.size(0)  
         with torch.no_grad():
-            eeg_embed = eeg_encoder(eeg)
-            logits = (eeg_embed @ image_embed.T) * torch.exp(torch.tensor(temperature))
-            # logits = (eeg_embed @ image_embed.T) / temperature # temp 0.07
+            eeg_features = eeg_model(eeg_data).float()
 
-            labels = torch.arange(image_embed.shape[0]).cuda()
+            logit_scale = eeg_model.logit_scale
             
-            loss_i = F.cross_entropy(logits, labels, reduction='none')
-            loss_t = F.cross_entropy(logits.T, labels, reduction='none')
+            img_loss = eeg_model.loss_func(eeg_features, img_features, logit_scale)
+        
+            loss = img_loss
+            total_loss += loss.item()
+        
+    avg_loss_encoder = total_loss / (batch_idx+1)
 
-            loss = (loss_i + loss_t) / 2.0
-            loss = loss.mean()
+    return avg_loss_encoder
 
-            eeg_encoder_loss.append(loss.detach().cpu().numpy())
+# def validation(epoch, eeg_encoder, optimizer, val_dataloader):
+#     eeg_encoder_loss = []
+#     temperature = 0.5
+#     for batch_idx, (eeg, image_embed) in enumerate(val_dataloader, start=1):
+#         eeg, image_embed = eeg.cuda(), image_embed.cuda()
+#         with torch.no_grad():
+#             eeg_embed = eeg_encoder(eeg)
+#             logits = (eeg_embed @ image_embed.T) * torch.exp(torch.tensor(temperature))
+#             # logits = (eeg_embed @ image_embed.T) / temperature # temp 0.07
 
-    return sum(eeg_encoder_loss) / len(eeg_encoder_loss)
+#             labels = torch.arange(image_embed.shape[0]).cuda()
+            
+#             loss_i = F.cross_entropy(logits, labels, reduction='none')
+#             loss_t = F.cross_entropy(logits.T, labels, reduction='none')
+
+#             loss = (loss_i + loss_t) / 2.0
+#             loss = loss.mean()
+
+#             eeg_encoder_loss.append(loss.detach().cpu().numpy())
+
+#     return sum(eeg_encoder_loss) / len(eeg_encoder_loss)
 
 def eeg_encoder_train():
 
     label_dir = './label_dic'
     split_dic_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1_split.pth'
     data_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1.pth'
-    model_type = 'EEGNet' # lstm or transformer or EEGNet
+    model_type = 'ATMS' # lstm or transformer or EEGNet or ATMS
     image_encoder = 'moco' # 'clip' or 'moco'
 
     # ## hyperparameters
-    batch_size     = 128 # default 128
-    EPOCHS         = 3000
+    batch_size     = 64 # default 128
+    EPOCHS         = 100
 
     class_labels   = {}
     label_count    = 0
@@ -96,7 +150,7 @@ def eeg_encoder_train():
         train_label_path = os.path.join(label_dir, 'train_imagefeat.pkl')
     elif image_encoder == 'clip':
         train_label_path = os.path.join(label_dir, 'train_clip_imagefeat.pkl')
-    train_dataset = EEGDataset(split_dic_path, data_path, train_label_path, split='train', network_name='EEGNet')
+    train_dataset = EEGDataset(split_dic_path, data_path, train_label_path, split='train')
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=False, drop_last=True)
 
     ## Validation data
@@ -105,7 +159,7 @@ def eeg_encoder_train():
         val_label_path = os.path.join(label_dir, 'val_imagefeat.pkl')
     elif image_encoder == 'clip':
         val_label_path = os.path.join(label_dir, 'val_clip_imagefeat.pkl')
-    val_dataset = EEGDataset(split_dic_path, data_path, val_label_path, split='val', network_name='EEGNet')
+    val_dataset = EEGDataset(split_dic_path, data_path, val_label_path, split='val', network_name='ATMS')
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, drop_last=True)
 
     ## eeg_encoder
@@ -114,7 +168,9 @@ def eeg_encoder_train():
     elif image_encoder == 'clip':
         projection_dim = 1024 # moco 256, clip 1024
 
-    if model_type=='transformer':
+    if model_type=='ATMS':
+        eeg_encoder = ATMS().cuda()
+    elif model_type=='transformer':
         eeg_encoder = EEG_transformer_encoder(in_channels=96, in_timestep=512, hidden_size=int(projection_dim / 2), projection_dim=projection_dim, num_layers=1, nhead=4, dropout=0).cuda() # num_layers=1
     elif model_type=='EEGNet':
         channel=96
@@ -125,11 +181,12 @@ def eeg_encoder_train():
 
     print(eeg_encoder)
 
-    optimizer = torch.optim.Adam(\
-                                    list(eeg_encoder.parameters()),\
-                                    lr=3e-4,\
-                                    betas=(0.9, 0.999)
-                                )
+    # optimizer = torch.optim.Adam(\
+    #                                 list(eeg_encoder.parameters()),\
+    #                                 lr=3e-4,\
+    #                                 betas=(0.9, 0.999)
+    #                             )
+    optimizer = AdamW(eeg_encoder.parameters(), lr=3e-4)
     
     # lambda_lr = lambda epoch: 0.999 ** epoch
     # scheduler = LambdaLR(optimizer, lr_lambda=lambda_lr)
@@ -167,11 +224,13 @@ def eeg_encoder_train():
 
         print('start training epoch ', epoch)
         encoder_train_loss = train(epoch, eeg_encoder, optimizer, train_dataloader)
-        train_loss_lst.append(encoder_train_loss)
+        if epoch != 0:
+            train_loss_lst.append(encoder_train_loss)
 
         encoder_val_loss = validation(epoch, eeg_encoder, optimizer, val_dataloader)
         # scheduler.step()
-        val_loss_lst.append(encoder_val_loss)
+        if epoch != 0:
+            val_loss_lst.append(encoder_val_loss)
         print('training loss:', encoder_train_loss, ', validation loss:', encoder_val_loss)
 
         if encoder_val_loss < best_val_loss:
