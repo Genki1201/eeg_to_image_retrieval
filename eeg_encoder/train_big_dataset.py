@@ -82,7 +82,7 @@ def eeg_encoder_train():
     split_dic_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1_split.pth'
     data_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1.pth'
     model_type = 'EEGNet' # lstm or transformer or EEGNet
-    image_encoder = 'moco' # 'clip' or 'moco'
+    image_encoder = 'clip_in1k' # 'clip' or 'moco' or 'clip_in1k'
 
     # ## hyperparameters
     batch_size     = 128 # default 128
@@ -96,6 +96,8 @@ def eeg_encoder_train():
         train_label_path = os.path.join(label_dir, 'train_imagefeat.pkl')
     elif image_encoder == 'clip':
         train_label_path = os.path.join(label_dir, 'train_clip_imagefeat.pkl')
+    elif image_encoder == 'clip_in1k':
+        train_label_path = os.path.join(label_dir, 'train_clip_in1k_imagefeat.pkl')
     train_dataset = EEGDataset(split_dic_path, data_path, train_label_path, split='train', network_name='EEGNet')
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=False, drop_last=True)
 
@@ -105,6 +107,8 @@ def eeg_encoder_train():
         val_label_path = os.path.join(label_dir, 'val_imagefeat.pkl')
     elif image_encoder == 'clip':
         val_label_path = os.path.join(label_dir, 'val_clip_imagefeat.pkl')
+    elif image_encoder == 'clip_in1k':
+        val_label_path = os.path.join(label_dir, 'val_clip_in1k_imagefeat.pkl')
     val_dataset = EEGDataset(split_dic_path, data_path, val_label_path, split='val', network_name='EEGNet')
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=False, drop_last=True)
 
@@ -113,6 +117,8 @@ def eeg_encoder_train():
         projection_dim = 256
     elif image_encoder == 'clip':
         projection_dim = 1024 # moco 256, clip 1024
+    elif image_encoder == 'clip_in1k':
+        projection_dim = 1280
 
     if model_type=='transformer':
         eeg_encoder = EEG_transformer_encoder(in_channels=96, in_timestep=512, hidden_size=int(projection_dim / 2), projection_dim=projection_dim, num_layers=1, nhead=4, dropout=0).cuda() # num_layers=1

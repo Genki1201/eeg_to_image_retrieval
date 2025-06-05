@@ -18,6 +18,7 @@ import open_clip
 from tqdm import tqdm
 from eeg_encoder.image_dataset import Image_dataset, ImageNet_dataset
 import pickle
+import timm
 
 
 def gen_big_img_feat(model, args, split_dic_path, data_path, stimuli_path, split): # MoCo v3の画像特徴量を取得
@@ -143,10 +144,54 @@ def gen_big_clip_img_feat(split_dic_path, data_path, stimuli_path, split): # CLI
 
     return eeg_encoder_label_dic
 
+def gen_big_clip_imgnet_feat(split_dic_path, data_path, stimuli_path, split): # CLIPの画像特徴量を取得
+    split_dic = torch.load(split_dic_path, map_location='cpu')
+    my_dic = torch.load(data_path, map_location='cpu')
+    dataset_lst = my_dic['dataset']
+    del my_dic
+    idx_lst = split_dic['splits'][0][split] # 5パターンある cross validation用
+    eeg_encoder_label_dic = {}
+
+    model = timm.create_model(
+        'vit_huge_patch14_clip_336.laion2b_ft_in12k_in1k',
+        pretrained=True,
+        num_classes=0,  # remove classifier nn.Linear
+    )
+    model = model.eval().cuda()
+
+    print('extracting image feature...')
+    for idx in tqdm(idx_lst):
+        image_name = dataset_lst[idx]['image']
+        image_path = os.path.join(stimuli_path, image_name + '.JPEG')
+        image = Image.open(image_path).convert("RGB") # unsqueeze(0)
+
+        data_config = timm.data.resolve_model_data_config(model)
+        transforms = timm.data.create_transform(**data_config, is_training=False)
+        image = transforms(image).cuda()
+
+        with torch.no_grad():
+            sampled_rep = model(image.unsqueeze(0))  # output is (batch_size, num_features) shaped tensor
+
+        # output = model.forward_features(transforms(image).unsqueeze(0))
+        # output is unpooled, a (1, 577, 1280) shaped tensor
+        # output = model.forward_head(output, pre_logits=True) 
+
+        sampled_rep = sampled_rep.squeeze()
+        sampled_rep = sampled_rep.detach().cpu()
+
+        eeg_encoder_label_dic[image_name] = sampled_rep
+
+    save_path = 'eeg_encoder/label_dic/{}_clip_in1k_imagefeat.pkl'.format(split) # train or test
+    with open(save_path, 'wb') as f:
+        pickle.dump(eeg_encoder_label_dic, f)
+
+    return eeg_encoder_label_dic
+
 if __name__ == '__main__':
     split_dic_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1_split.pth'
     data_path = '/workspace/CVPR2021-02785/preprocessed/imagenet40-1000-1.pth'
     stimuli_path = '/workspace/CVPR2021-02785/stimuli'
     split_lst = ['train', 'val', 'test']
     for split in split_lst:
-        gen_big_clip_img_feat(split_dic_path, data_path, stimuli_path, split)
+        # gen_big_clip_img_feat(split_dic_path, data_path, stimuli_path, split)
+        gen_big_clip_imgnet_feat(split_dic_path, data_path, stimuli_path, split)

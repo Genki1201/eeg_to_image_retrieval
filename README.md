@@ -1,5 +1,11 @@
 まず、main_mage.py内のmk_labelをTrueにすることで、eeg_to_image.shを実行すると//
 bash eeg_to_image.sh//
 画像をMoCo v3またはCLIPによって画像特徴量にしてそれをpklファイルとしてeeg_encoder/label_dicに保存する。
+（CLIPの画像特徴量を保存するときには、mk_label.pyを直接実行する）
 
 その後、eeg_encoderのtrain_big_dataset.pyでCVPR2021のほうは学習が可能
+top_k_recall.pyによって検索タスクを行える
+
+もともとの論文ではバッチサイズは16
+
+ATMSで学習を行う際はtrain_bigdata_atms.pyを実行する
